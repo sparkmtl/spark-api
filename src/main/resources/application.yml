@@ -1,0 +1,51 @@
+spring:
+  config:
+    import: optional:file:.env[.properties]
+  application:
+    name: spark-api
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/spark_db}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:Admin12345}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    open-in-view: false
+    show-sql: ${JPA_SHOW_SQL:false}
+    properties:
+      hibernate:
+        format_sql: true
+  # Mailtrap live sending relay (SMTP). Username is always the literal string "api";
+  # the password is your Mailtrap API token (MAILTRAP_TOKEN).
+  mail:
+    host: ${MAILTRAP_SMTP_HOST:live.smtp.mailtrap.io}
+    port: ${MAILTRAP_SMTP_PORT:587}
+    username: ${MAILTRAP_SMTP_USERNAME:api}
+    password: ${MAILTRAP_TOKEN:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 8000
+          writetimeout: 5000
+
+server:
+  port: ${SERVER_PORT:8081}
+
+jwt:
+  secret: ${JWT_SECRET:dev-only-secret-key-change-me-this-must-be-at-least-256-bits-long}
+  expiration-ms: ${JWT_EXPIRATION_MS:3600000}
+
+spark:
+  mail:
+    enabled: ${MAIL_ENABLED:false}
+    from: ${MAIL_FROM:hello@demomailtrap.co}
+    from-name: ${MAIL_FROM_NAME:Spark}
+  otp:
+    ttl-minutes: ${OTP_TTL_MINUTES:10}
+    length: ${OTP_LENGTH:6}
