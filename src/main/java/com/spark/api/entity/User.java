@@ -34,6 +34,33 @@ public class User {
 	@Column(nullable = false, length = 20)
 	private Role role = Role.USER;
 
+	/** Profile display name (About me -> Name). */
+	@Column(length = 50)
+	private String displayName;
+
+	private Integer age;
+
+	@Column(length = 500)
+	private String about;
+
+	@Enumerated(EnumType.STRING)
+	@Column(length = 20)
+	private ProfileGender gender;
+
+	@Enumerated(EnumType.STRING)
+	@Column(length = 20)
+	private LookingForGender dateLookingFor;
+
+	@Enumerated(EnumType.STRING)
+	@Column(length = 20)
+	private LookingForGender friendsLookingFor;
+
+	@Column(nullable = false)
+	private int networking = 0;
+
+	@Column(name = "professional_development", nullable = false)
+	private int professionalDevelopment = 0;
+
 	@Column(nullable = false, updatable = false)
 	private Instant createdAt;
 
@@ -90,6 +117,70 @@ public class User {
 
 	public void setRole(Role role) {
 		this.role = role;
+	}
+
+	public String getDisplayName() {
+		return displayName;
+	}
+
+	public void setDisplayName(String displayName) {
+		this.displayName = displayName;
+	}
+
+	public Integer getAge() {
+		return age;
+	}
+
+	public void setAge(Integer age) {
+		this.age = age;
+	}
+
+	public String getAbout() {
+		return about;
+	}
+
+	public void setAbout(String about) {
+		this.about = about;
+	}
+
+	public ProfileGender getGender() {
+		return gender;
+	}
+
+	public void setGender(ProfileGender gender) {
+		this.gender = gender;
+	}
+
+	public LookingForGender getDateLookingFor() {
+		return dateLookingFor;
+	}
+
+	public void setDateLookingFor(LookingForGender dateLookingFor) {
+		this.dateLookingFor = dateLookingFor;
+	}
+
+	public LookingForGender getFriendsLookingFor() {
+		return friendsLookingFor;
+	}
+
+	public void setFriendsLookingFor(LookingForGender friendsLookingFor) {
+		this.friendsLookingFor = friendsLookingFor;
+	}
+
+	public int getNetworking() {
+		return networking;
+	}
+
+	public void setNetworking(int networking) {
+		this.networking = networking;
+	}
+
+	public int getProfessionalDevelopment() {
+		return professionalDevelopment;
+	}
+
+	public void setProfessionalDevelopment(int professionalDevelopment) {
+		this.professionalDevelopment = professionalDevelopment;
 	}
 
 	public Instant getCreatedAt() {
