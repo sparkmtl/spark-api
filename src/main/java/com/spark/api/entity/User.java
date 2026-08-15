@@ -61,6 +61,13 @@ public class User {
 	@Column(name = "professional_development", nullable = false)
 	private int professionalDevelopment = 0;
 
+	/** Last known map location, shared by the client while viewing the Map tab. */
+	private Double latitude;
+
+	private Double longitude;
+
+	private Instant locationUpdatedAt;
+
 	@Column(nullable = false, updatable = false)
 	private Instant createdAt;
 
@@ -181,6 +188,30 @@ public class User {
 
 	public void setProfessionalDevelopment(int professionalDevelopment) {
 		this.professionalDevelopment = professionalDevelopment;
+	}
+
+	public Double getLatitude() {
+		return latitude;
+	}
+
+	public void setLatitude(Double latitude) {
+		this.latitude = latitude;
+	}
+
+	public Double getLongitude() {
+		return longitude;
+	}
+
+	public void setLongitude(Double longitude) {
+		this.longitude = longitude;
+	}
+
+	public Instant getLocationUpdatedAt() {
+		return locationUpdatedAt;
+	}
+
+	public void setLocationUpdatedAt(Instant locationUpdatedAt) {
+		this.locationUpdatedAt = locationUpdatedAt;
 	}
 
 	public Instant getCreatedAt() {
