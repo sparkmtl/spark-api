@@ -1,6 +1,7 @@
 package com.spark.api.config;
 
 import com.spark.api.security.JwtAuthenticationFilter;
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -48,6 +49,8 @@ public class SecurityConfig {
 		config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
 		config.setAllowedHeaders(List.of("*"));
 		config.setAllowCredentials(true);
+		// Required for Chrome Private Network Access (Flutter web → localhost API).
+		config.setAllowPrivateNetwork(true);
 
 		UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
 		source.registerCorsConfiguration("/**", config);
@@ -61,10 +64,17 @@ public class SecurityConfig {
 				.csrf(AbstractHttpConfigurer::disable)
 				.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 				.authorizeHttpRequests(auth -> auth
+						.dispatcherTypeMatchers(DispatcherType.FORWARD, DispatcherType.ERROR).permitAll()
 						.requestMatchers(
-								"/api/auth/**",
+								"/api/auth/login",
+								"/api/auth/register",
+								"/api/auth/register/send-otp",
+								"/api/auth/forgot-password",
+								"/api/auth/verify-otp",
+								"/api/auth/reset-password",
 								"/api/hello",
-								"/actuator/health")
+								"/actuator/health",
+								"/error")
 						.permitAll()
 						.anyRequest().authenticated())
 				.exceptionHandling(ex -> ex

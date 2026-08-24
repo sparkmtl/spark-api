@@ -3,8 +3,10 @@ package com.spark.api.exception;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -34,6 +36,20 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(BadRequestException.class)
 	public ResponseEntity<Map<String, Object>> handleBadRequest(BadRequestException ex) {
 		return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body(HttpStatus.BAD_REQUEST, ex.getMessage(), null));
+	}
+
+	@ExceptionHandler(HttpMessageNotReadableException.class)
+	public ResponseEntity<Map<String, Object>> handleUnreadableJson(HttpMessageNotReadableException ex) {
+		return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+				.body(body(HttpStatus.BAD_REQUEST, "Invalid request body", null));
+	}
+
+	@ExceptionHandler(DataAccessException.class)
+	public ResponseEntity<Map<String, Object>> handleDataAccess(DataAccessException ex) {
+		return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body(
+				HttpStatus.SERVICE_UNAVAILABLE,
+				"Database is unavailable. Make sure PostgreSQL is running (docker compose up -d).",
+				null));
 	}
 
 	private Map<String, Object> body(HttpStatus status, String message, Map<String, String> errors) {
