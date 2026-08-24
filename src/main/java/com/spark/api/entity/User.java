@@ -68,6 +68,21 @@ public class User {
 
 	private Instant locationUpdatedAt;
 
+	@Column(name = "checked_in", nullable = false)
+	private int checkedIn = 0;
+
+	private Double checkInAnchorLatitude;
+
+	private Double checkInAnchorLongitude;
+
+	private Double checkInLatitude;
+
+	private Double checkInLongitude;
+
+	private Instant checkInAt;
+
+	private Instant checkInUpdatedAt;
+
 	@Column(nullable = false, updatable = false)
 	private Instant createdAt;
 
@@ -212,6 +227,66 @@ public class User {
 
 	public void setLocationUpdatedAt(Instant locationUpdatedAt) {
 		this.locationUpdatedAt = locationUpdatedAt;
+	}
+
+	public int getCheckedIn() {
+		return checkedIn;
+	}
+
+	public void setCheckedIn(int checkedIn) {
+		this.checkedIn = checkedIn;
+	}
+
+	public boolean isCheckedIn() {
+		return checkedIn == 1;
+	}
+
+	public Double getCheckInAnchorLatitude() {
+		return checkInAnchorLatitude;
+	}
+
+	public void setCheckInAnchorLatitude(Double checkInAnchorLatitude) {
+		this.checkInAnchorLatitude = checkInAnchorLatitude;
+	}
+
+	public Double getCheckInAnchorLongitude() {
+		return checkInAnchorLongitude;
+	}
+
+	public void setCheckInAnchorLongitude(Double checkInAnchorLongitude) {
+		this.checkInAnchorLongitude = checkInAnchorLongitude;
+	}
+
+	public Double getCheckInLatitude() {
+		return checkInLatitude;
+	}
+
+	public void setCheckInLatitude(Double checkInLatitude) {
+		this.checkInLatitude = checkInLatitude;
+	}
+
+	public Double getCheckInLongitude() {
+		return checkInLongitude;
+	}
+
+	public void setCheckInLongitude(Double checkInLongitude) {
+		this.checkInLongitude = checkInLongitude;
+	}
+
+	public Instant getCheckInAt() {
+		return checkInAt;
+	}
+
+	public void setCheckInAt(Instant checkInAt) {
+		this.checkInAt = checkInAt;
+	}
+
+	public Instant getCheckInUpdatedAt() {
+		return checkInUpdatedAt;
+	}
+
+	public void setCheckInUpdatedAt(Instant checkInUpdatedAt) {
+		this.checkInUpdatedAt = checkInUpdatedAt;
 	}
 
 	public Instant getCreatedAt() {

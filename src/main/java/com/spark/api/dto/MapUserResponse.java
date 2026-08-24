@@ -1,5 +1,6 @@
 package com.spark.api.dto;
 
+import com.spark.api.entity.CheckIn;
 import com.spark.api.entity.User;
 import java.util.UUID;
 
@@ -25,6 +26,18 @@ public class MapUserResponse {
 		response.age = user.getAge();
 		response.latitude = user.getLatitude();
 		response.longitude = user.getLongitude();
+		response.similarity = similarity;
+		return response;
+	}
+
+	public static MapUserResponse ofCheckIn(User user, CheckIn checkIn, double similarity) {
+		MapUserResponse response = new MapUserResponse();
+		response.id = user.getId();
+		String displayName = user.getDisplayName();
+		response.name = displayName != null && !displayName.isBlank() ? displayName : user.getUsername();
+		response.age = user.getAge();
+		response.latitude = checkIn.getCurrentLatitude();
+		response.longitude = checkIn.getCurrentLongitude();
 		response.similarity = similarity;
 		return response;
 	}
