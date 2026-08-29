@@ -4,8 +4,6 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.dao.DataAccessException;
-import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.dao.IncorrectResultSizeDataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -28,15 +26,6 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(DuplicateResourceException.class)
 	public ResponseEntity<Map<String, Object>> handleDuplicate(DuplicateResourceException ex) {
 		return ResponseEntity.status(HttpStatus.CONFLICT).body(body(HttpStatus.CONFLICT, ex.getMessage(), null));
-	}
-
-	@ExceptionHandler({
-			DataIntegrityViolationException.class,
-			IncorrectResultSizeDataAccessException.class
-	})
-	public ResponseEntity<Map<String, Object>> handleCheckInStateConflict(RuntimeException ex) {
-		return ResponseEntity.status(HttpStatus.CONFLICT)
-				.body(body(HttpStatus.CONFLICT, "Check-in state conflict", null));
 	}
 
 	@ExceptionHandler(InvalidCredentialsException.class)

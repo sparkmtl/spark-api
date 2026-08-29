@@ -12,12 +12,8 @@ import com.spark.api.repository.CheckInRepository;
 import com.spark.api.repository.UserRepository;
 import com.spark.api.security.SecurityUtils;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,26 +31,21 @@ public class CheckInService {
 	@Transactional
 	public CheckInStatusResponse checkIn(UpdateLocationRequest request) {
 		User user = loadCurrentUser();
-		if (findActiveCheckIn(user.getId()).isPresent()) {
+		if (checkInRepository.findByUserIdAndActiveTrue(user.getId()).isPresent()) {
 			throw new DuplicateResourceException("Already checked in");
 		}
 
 		Instant now = Instant.now();
 		CheckIn checkIn = new CheckIn();
 		checkIn.setUserId(user.getId());
-		checkIn.activate();
+		checkIn.setActive(true);
 		checkIn.setAnchorLatitude(request.getLatitude());
 		checkIn.setAnchorLongitude(request.getLongitude());
 		checkIn.setCurrentLatitude(request.getLatitude());
 		checkIn.setCurrentLongitude(request.getLongitude());
 		checkIn.setCheckedInAt(now);
 		checkIn.setUpdatedAt(now);
-
-		try {
-			checkInRepository.saveAndFlush(checkIn);
-		} catch (DataIntegrityViolationException ex) {
-			throw new DuplicateResourceException("Already checked in");
-		}
+		checkInRepository.save(checkIn);
 
 		syncUserCheckInFlag(user, checkIn);
 		userRepository.save(user);
@@ -64,7 +55,7 @@ public class CheckInService {
 	@Transactional
 	public CheckInStatusResponse getStatus() {
 		User user = loadCurrentUser();
-		Optional<CheckIn> active = findActiveCheckIn(user.getId());
+		Optional<CheckIn> active = checkInRepository.findByUserIdAndActiveTrue(user.getId());
 		if (active.isPresent()) {
 			return CheckInStatusResponse.of(active.get());
 		}
@@ -78,7 +69,7 @@ public class CheckInService {
 	protected CheckInStatusResponse migrateLegacyUserCheckIn(User user) {
 		CheckIn checkIn = new CheckIn();
 		checkIn.setUserId(user.getId());
-		checkIn.activate();
+		checkIn.setActive(true);
 		checkIn.setAnchorLatitude(user.getCheckInAnchorLatitude() != null
 				? user.getCheckInAnchorLatitude()
 				: user.getCheckInLatitude());
@@ -89,21 +80,14 @@ public class CheckInService {
 		checkIn.setCurrentLongitude(user.getCheckInLongitude());
 		checkIn.setCheckedInAt(user.getCheckInAt() != null ? user.getCheckInAt() : Instant.now());
 		checkIn.setUpdatedAt(user.getCheckInUpdatedAt() != null ? user.getCheckInUpdatedAt() : Instant.now());
-
-		try {
-			checkInRepository.saveAndFlush(checkIn);
-		} catch (DataIntegrityViolationException ex) {
-			return findActiveCheckIn(user.getId())
-					.map(CheckInStatusResponse::of)
-					.orElseThrow(() -> new DuplicateResourceException("Already checked in"));
-		}
+		checkInRepository.save(checkIn);
 		return CheckInStatusResponse.of(checkIn);
 	}
 
 	@Transactional
 	public CheckInLocationUpdateResponse updateLocation(UpdateLocationRequest request) {
 		User user = loadCurrentUser();
-		CheckIn checkIn = findActiveCheckIn(user.getId())
+		CheckIn checkIn = checkInRepository.findByUserIdAndActiveTrue(user.getId())
 				.orElseThrow(() -> new BadRequestException("Not checked in"));
 
 		double distanceKm = GeoUtils.distanceKm(
@@ -113,7 +97,7 @@ public class CheckInService {
 				request.getLongitude());
 
 		if (distanceKm >= GeoUtils.AUTO_CHECKOUT_RADIUS_KM) {
-			deactivateAllActiveForUser(user);
+			deactivateCheckIn(checkIn, user);
 			return new CheckInLocationUpdateResponse(false, true);
 		}
 
@@ -130,14 +114,17 @@ public class CheckInService {
 	@Transactional
 	public CheckInStatusResponse checkOut() {
 		User user = loadCurrentUser();
-		deactivateAllActiveForUser(user);
+		CheckIn checkIn = checkInRepository.findByUserIdAndActiveTrue(user.getId())
+				.orElseThrow(() -> new BadRequestException("Not checked in"));
+
+		deactivateCheckIn(checkIn, user);
 		return CheckInStatusResponse.notCheckedIn();
 	}
 
-	@Transactional
+	@Transactional(readOnly = true)
 	public List<MapUserResponse> getCheckedInUsers() {
 		User me = loadCurrentUser();
-		if (findActiveCheckIn(me.getId()).isEmpty()) {
+		if (checkInRepository.findByUserIdAndActiveTrue(me.getId()).isEmpty()) {
 			return List.of();
 		}
 
@@ -151,63 +138,18 @@ public class CheckInService {
 				.toList();
 	}
 
-	/**
-	 * Returns the single active check-in for the user, healing legacy duplicates
-	 * by keeping the newest and deactivating the rest.
-	 */
-	private Optional<CheckIn> findActiveCheckIn(UUID userId) {
-		List<CheckIn> actives = checkInRepository.findByUserIdAndActiveTrue(userId);
-		if (actives.isEmpty()) {
-			return Optional.empty();
-		}
-		if (actives.size() == 1) {
-			CheckIn only = actives.get(0);
-			ensureActiveUserId(only);
-			return Optional.of(only);
-		}
-		return Optional.of(healDuplicateActives(actives));
-	}
-
-	private CheckIn healDuplicateActives(List<CheckIn> actives) {
-		List<CheckIn> sorted = new ArrayList<>(actives);
-		sorted.sort(Comparator
-				.comparing(CheckIn::getCheckedInAt, Comparator.nullsFirst(Comparator.naturalOrder()))
-				.reversed());
-		CheckIn keep = sorted.get(0);
-		ensureActiveUserId(keep);
-		for (int i = 1; i < sorted.size(); i++) {
-			CheckIn duplicate = sorted.get(i);
-			duplicate.deactivate();
-			duplicate.setUpdatedAt(Instant.now());
-			checkInRepository.save(duplicate);
-		}
-		checkInRepository.save(keep);
-		return keep;
-	}
-
-	private void ensureActiveUserId(CheckIn checkIn) {
-		if (checkIn.isActive() && checkIn.getActiveUserId() == null) {
-			checkIn.activate();
-			checkInRepository.save(checkIn);
-		}
-	}
-
-	private void deactivateAllActiveForUser(User user) {
-		List<CheckIn> actives = checkInRepository.findByUserIdAndActiveTrue(user.getId());
-		Instant now = Instant.now();
-		for (CheckIn checkIn : actives) {
-			checkIn.deactivate();
-			checkIn.setUpdatedAt(now);
-			checkInRepository.save(checkIn);
-		}
-		clearUserCheckInFields(user);
-		userRepository.save(user);
-	}
-
 	private User loadCurrentUser() {
 		User current = SecurityUtils.requireCurrentUser();
 		return userRepository.findById(current.getId())
 				.orElseThrow(() -> new BadRequestException("User not found"));
+	}
+
+	private void deactivateCheckIn(CheckIn checkIn, User user) {
+		checkIn.setActive(false);
+		checkIn.setUpdatedAt(Instant.now());
+		checkInRepository.save(checkIn);
+		clearUserCheckInFields(user);
+		userRepository.save(user);
 	}
 
 	private static void syncUserCheckInFlag(User user, CheckIn checkIn) {
