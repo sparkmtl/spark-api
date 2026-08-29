@@ -22,6 +22,13 @@ public class CheckIn {
 	@Column(nullable = false)
 	private boolean active;
 
+	/**
+	 * Set to {@link #userId} while active; null when inactive. Unique so at most
+	 * one active check-in exists per user (PostgreSQL allows many nulls).
+	 */
+	@Column(name = "active_user_id", unique = true)
+	private UUID activeUserId;
+
 	@Column(name = "anchor_latitude", nullable = false)
 	private double anchorLatitude;
 
@@ -50,11 +57,33 @@ public class CheckIn {
 			checkedInAt = now;
 		}
 		updatedAt = now;
+		syncActiveUserId();
 	}
 
 	@PreUpdate
 	void onUpdate() {
 		updatedAt = Instant.now();
+		syncActiveUserId();
+	}
+
+	/** Marks this row active and claims the unique active slot for {@code userId}. */
+	public void activate() {
+		this.active = true;
+		this.activeUserId = this.userId;
+	}
+
+	/** Marks this row inactive and releases the unique active slot. */
+	public void deactivate() {
+		this.active = false;
+		this.activeUserId = null;
+	}
+
+	private void syncActiveUserId() {
+		if (active) {
+			activeUserId = userId;
+		} else {
+			activeUserId = null;
+		}
 	}
 
 	public UUID getId() {
@@ -71,6 +100,15 @@ public class CheckIn {
 
 	public void setActive(boolean active) {
 		this.active = active;
+		syncActiveUserId();
+	}
+
+	public UUID getActiveUserId() {
+		return activeUserId;
+	}
+
+	public void setActiveUserId(UUID activeUserId) {
+		this.activeUserId = activeUserId;
 	}
 
 	public double getAnchorLatitude() {
@@ -127,5 +165,8 @@ public class CheckIn {
 
 	public void setUserId(UUID userId) {
 		this.userId = userId;
+		if (active) {
+			this.activeUserId = userId;
+		}
 	}
 }

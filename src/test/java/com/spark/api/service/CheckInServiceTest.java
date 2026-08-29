@@ -2,10 +2,13 @@ package com.spark.api.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -34,6 +37,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 @ExtendWith(MockitoExtension.class)
 class CheckInServiceTest {
@@ -74,8 +78,8 @@ class CheckInServiceTest {
 
 	@Test
 	void checkIn_createsCheckInRowAndSyncsUser() {
-		when(checkInRepository.findByUserIdAndActiveTrue(currentUserId)).thenReturn(Optional.empty());
-		when(checkInRepository.save(any(CheckIn.class))).thenAnswer(invocation -> {
+		when(checkInRepository.findByUserIdAndActiveTrue(currentUserId)).thenReturn(List.of());
+		when(checkInRepository.saveAndFlush(any(CheckIn.class))).thenAnswer(invocation -> {
 			CheckIn saved = invocation.getArgument(0);
 			saved.setId(UUID.randomUUID());
 			return saved;
@@ -93,9 +97,10 @@ class CheckInServiceTest {
 		assertEquals(43.65, status.getAnchorLatitude());
 
 		ArgumentCaptor<CheckIn> captor = ArgumentCaptor.forClass(CheckIn.class);
-		verify(checkInRepository).save(captor.capture());
+		verify(checkInRepository).saveAndFlush(captor.capture());
 		assertTrue(captor.getValue().isActive());
 		assertEquals(currentUserId, captor.getValue().getUserId());
+		assertEquals(currentUserId, captor.getValue().getActiveUserId());
 		assertEquals(1, currentUser.getCheckedIn());
 		verify(userRepository).save(currentUser);
 	}
@@ -103,7 +108,20 @@ class CheckInServiceTest {
 	@Test
 	void checkIn_whenAlreadyCheckedIn_throwsConflict() {
 		when(checkInRepository.findByUserIdAndActiveTrue(currentUserId))
-				.thenReturn(Optional.of(activeCheckIn(currentUserId)));
+				.thenReturn(List.of(activeCheckIn(currentUserId)));
+
+		UpdateLocationRequest request = new UpdateLocationRequest();
+		request.setLatitude(43.65);
+		request.setLongitude(-79.38);
+
+		assertThrows(DuplicateResourceException.class, () -> checkInService.checkIn(request));
+	}
+
+	@Test
+	void checkIn_whenUniqueConstraintViolated_throwsConflict() {
+		when(checkInRepository.findByUserIdAndActiveTrue(currentUserId)).thenReturn(List.of());
+		when(checkInRepository.saveAndFlush(any(CheckIn.class)))
+				.thenThrow(new DataIntegrityViolationException("duplicate active_user_id"));
 
 		UpdateLocationRequest request = new UpdateLocationRequest();
 		request.setLatitude(43.65);
@@ -115,7 +133,7 @@ class CheckInServiceTest {
 	@Test
 	void updateLocation_withinRadius_keepsCheckedIn() {
 		CheckIn checkIn = activeCheckIn(currentUserId);
-		when(checkInRepository.findByUserIdAndActiveTrue(currentUserId)).thenReturn(Optional.of(checkIn));
+		when(checkInRepository.findByUserIdAndActiveTrue(currentUserId)).thenReturn(List.of(checkIn));
 		when(checkInRepository.save(any(CheckIn.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
 		UpdateLocationRequest request = new UpdateLocationRequest();
@@ -134,7 +152,7 @@ class CheckInServiceTest {
 		CheckIn checkIn = activeCheckIn(currentUserId);
 		checkIn.setAnchorLatitude(43.6532);
 		checkIn.setAnchorLongitude(-79.3832);
-		when(checkInRepository.findByUserIdAndActiveTrue(currentUserId)).thenReturn(Optional.of(checkIn));
+		when(checkInRepository.findByUserIdAndActiveTrue(currentUserId)).thenReturn(List.of(checkIn));
 		when(checkInRepository.save(any(CheckIn.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
 		UpdateLocationRequest request = new UpdateLocationRequest();
@@ -146,6 +164,7 @@ class CheckInServiceTest {
 		assertFalse(response.isCheckedIn());
 		assertTrue(response.isAutoCheckedOut());
 		assertFalse(checkIn.isActive());
+		assertNull(checkIn.getActiveUserId());
 		assertEquals(0, currentUser.getCheckedIn());
 	}
 
@@ -153,25 +172,86 @@ class CheckInServiceTest {
 	void checkOut_deactivatesCheckInRow() {
 		CheckIn checkIn = activeCheckIn(currentUserId);
 		currentUser.setCheckedIn(1);
-		when(checkInRepository.findByUserIdAndActiveTrue(currentUserId)).thenReturn(Optional.of(checkIn));
+		when(checkInRepository.findByUserIdAndActiveTrue(currentUserId)).thenReturn(List.of(checkIn));
 		when(checkInRepository.save(any(CheckIn.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
 		CheckInStatusResponse status = checkInService.checkOut();
 
 		assertFalse(status.isCheckedIn());
 		assertFalse(checkIn.isActive());
+		assertNull(checkIn.getActiveUserId());
 		assertEquals(0, currentUser.getCheckedIn());
 	}
 
 	@Test
-	void checkOut_whenNotCheckedIn_throwsBadRequest() {
-		when(checkInRepository.findByUserIdAndActiveTrue(currentUserId)).thenReturn(Optional.empty());
-		assertThrows(BadRequestException.class, () -> checkInService.checkOut());
+	void checkOut_whenNotCheckedIn_isIdempotent() {
+		when(checkInRepository.findByUserIdAndActiveTrue(currentUserId)).thenReturn(List.of());
+
+		CheckInStatusResponse status = checkInService.checkOut();
+
+		assertFalse(status.isCheckedIn());
+		verify(checkInRepository, never()).save(any(CheckIn.class));
+		assertEquals(0, currentUser.getCheckedIn());
+	}
+
+	@Test
+	void checkOut_deactivatesAllDuplicateActives() {
+		CheckIn older = activeCheckIn(currentUserId);
+		older.setCheckedInAt(Instant.parse("2026-01-01T00:00:00Z"));
+		CheckIn newer = activeCheckIn(currentUserId);
+		newer.setCheckedInAt(Instant.parse("2026-06-01T00:00:00Z"));
+		currentUser.setCheckedIn(1);
+		when(checkInRepository.findByUserIdAndActiveTrue(currentUserId))
+				.thenReturn(List.of(older, newer));
+		when(checkInRepository.save(any(CheckIn.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+		CheckInStatusResponse status = checkInService.checkOut();
+
+		assertFalse(status.isCheckedIn());
+		assertFalse(older.isActive());
+		assertFalse(newer.isActive());
+		assertNull(older.getActiveUserId());
+		assertNull(newer.getActiveUserId());
+		assertEquals(0, currentUser.getCheckedIn());
+		verify(checkInRepository, times(2)).save(any(CheckIn.class));
+	}
+
+	@Test
+	void getStatus_healsDuplicateActives_keepsNewest() {
+		CheckIn older = activeCheckIn(currentUserId);
+		older.setCheckedInAt(Instant.parse("2026-01-01T00:00:00Z"));
+		older.setCurrentLatitude(43.0);
+		CheckIn newer = activeCheckIn(currentUserId);
+		newer.setCheckedInAt(Instant.parse("2026-06-01T00:00:00Z"));
+		newer.setCurrentLatitude(44.0);
+		when(checkInRepository.findByUserIdAndActiveTrue(currentUserId))
+				.thenReturn(List.of(older, newer));
+		when(checkInRepository.save(any(CheckIn.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+		CheckInStatusResponse status = checkInService.getStatus();
+
+		assertTrue(status.isCheckedIn());
+		assertEquals(44.0, status.getLatitude());
+		assertFalse(older.isActive());
+		assertNull(older.getActiveUserId());
+		assertTrue(newer.isActive());
+		assertEquals(currentUserId, newer.getActiveUserId());
+	}
+
+	@Test
+	void updateLocation_whenNotCheckedIn_throwsBadRequest() {
+		when(checkInRepository.findByUserIdAndActiveTrue(currentUserId)).thenReturn(List.of());
+
+		UpdateLocationRequest request = new UpdateLocationRequest();
+		request.setLatitude(43.65);
+		request.setLongitude(-79.38);
+
+		assertThrows(BadRequestException.class, () -> checkInService.updateLocation(request));
 	}
 
 	@Test
 	void getCheckedInUsers_whenNotCheckedIn_returnsEmpty() {
-		when(checkInRepository.findByUserIdAndActiveTrue(currentUserId)).thenReturn(Optional.empty());
+		when(checkInRepository.findByUserIdAndActiveTrue(currentUserId)).thenReturn(List.of());
 		List<MapUserResponse> users = checkInService.getCheckedInUsers();
 		assertTrue(users.isEmpty());
 	}
@@ -179,7 +259,7 @@ class CheckInServiceTest {
 	@Test
 	void getCheckedInUsers_whenCheckedIn_returnsOthers() {
 		when(checkInRepository.findByUserIdAndActiveTrue(currentUserId))
-				.thenReturn(Optional.of(activeCheckIn(currentUserId)));
+				.thenReturn(List.of(activeCheckIn(currentUserId)));
 
 		UUID otherUserId = UUID.randomUUID();
 		CheckIn otherCheckIn = activeCheckIn(otherUserId);
@@ -207,7 +287,7 @@ class CheckInServiceTest {
 		CheckIn checkIn = new CheckIn();
 		checkIn.setId(UUID.randomUUID());
 		checkIn.setUserId(userId);
-		checkIn.setActive(true);
+		checkIn.activate();
 		checkIn.setAnchorLatitude(43.65);
 		checkIn.setAnchorLongitude(-79.38);
 		checkIn.setCurrentLatitude(43.65);
